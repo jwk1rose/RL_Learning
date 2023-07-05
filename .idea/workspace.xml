@@ -7,6 +7,7 @@
     <list default="true" id="0fa60929-9d31-4f77-8ad9-b2994dae2fdc" name="更改" comment="update">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/solver.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/solver.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -90,7 +91,7 @@
       <workItem from="1687844394896" duration="72346000" />
       <workItem from="1688291155871" duration="12107000" />
       <workItem from="1688350605980" duration="45473000" />
-      <workItem from="1688487105148" duration="31669000" />
+      <workItem from="1688487105148" duration="33149000" />
     </task>
     <task id="LOCAL-00001" summary="update">
       <created>1688576243933</created>
@@ -99,7 +100,14 @@
       <option name="project" value="LOCAL" />
       <updated>1688576243933</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="update">
+      <created>1688577159303</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1688577159303</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -125,7 +133,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/scripts/solver.py</url>
-          <line>835</line>
+          <line>840</line>
           <option name="timeStamp" value="14" />
         </line-breakpoint>
       </breakpoints>

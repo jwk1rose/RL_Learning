@@ -535,6 +535,8 @@ class Solve:
         return value_approximation
 
     def sarsa_function_approximation(self, learning_rate=0.0005, epsilon=0.1, num_episodes=100000, fourier=True, ord=5):
+        #BUG
+
         dim = (ord + 1) ** 2 if fourier else np.arange(ord + 2).sum()
         w = np.random.default_rng().normal(size=dim)
 
@@ -629,6 +631,8 @@ class Solve:
 
     def qlearning_function_approximation(self, learning_rate=0.0005, epsilon=0.1, num_episodes=100000, fourier=True,
                                          ord=15):
+        #BUG
+
         dim = (ord + 1) ** 2 if fourier else np.arange(ord + 2).sum()
         w = np.random.default_rng().normal(size=dim)
 
@@ -729,6 +733,7 @@ class Solve:
     def qvalue_function_approximation(self, learning_rate=0.00008, epsilon=0.1, num_episodes=1000000,
                                       fourier=True,
                                       ord=5):
+        #BUG
         dim = (ord + 1) ** 3 if fourier else np.arange(ord + 2).sum()
         w = np.random.default_rng().normal(size=dim)
         qvalue_approximation = np.zeros(shape=(self.state_space_size, self.action_space_size))
