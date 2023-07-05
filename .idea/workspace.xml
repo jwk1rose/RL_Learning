@@ -4,14 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0fa60929-9d31-4f77-8ad9-b2994dae2fdc" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/scripts/model.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/RL_Learning.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/RL_Learning.iml" afterDir="false" />
+    <list default="true" id="0fa60929-9d31-4f77-8ad9-b2994dae2fdc" name="更改" comment="update">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/grid_env.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/grid_env.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/render.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/render.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/solver.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/solver.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -95,8 +90,16 @@
       <workItem from="1687844394896" duration="72346000" />
       <workItem from="1688291155871" duration="12107000" />
       <workItem from="1688350605980" duration="45473000" />
-      <workItem from="1688487105148" duration="30743000" />
+      <workItem from="1688487105148" duration="31669000" />
     </task>
+    <task id="LOCAL-00001" summary="update">
+      <created>1688576243933</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1688576243933</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -112,6 +115,10 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="update" />
+    <option name="LAST_COMMIT_MESSAGE" value="update" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
