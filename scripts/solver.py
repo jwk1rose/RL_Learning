@@ -3,8 +3,14 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+from torch.utils import data
+from torch.utils.tensorboard import SummaryWriter  # 导入SummaryWriter
 
 import grid_env
+from model import *
+
+
+# np.random.seed(1)
 
 
 class Solve:
@@ -18,6 +24,7 @@ class Solve:
         self.qvalue = np.zeros(shape=(self.state_space_size, self.action_space_size))
         self.mean_policy = np.ones(shape=(self.state_space_size, self.action_space_size)) / self.action_space_size
         self.policy = self.mean_policy.copy()
+        self.writer = SummaryWriter("logs")  # 实例化SummaryWriter对象
 
     def random_greed_policy(self):
         """
@@ -123,10 +130,10 @@ class Solve:
                                              toward=policy * 0.4 * self.env.action_to_direction[action],
                                              radius=policy * 0.1)
 
-    def show_state_value(self):
+    def show_state_value(self, state_value, y_offset=0.2):
         for state in range(self.state_space_size):
-            self.env.render_.write_word(pos=self.env.state2pos(state), word=str(round(self.state_value[state], 1)),
-                                        y_offset=0.2,
+            self.env.render_.write_word(pos=self.env.state2pos(state), word=str(round(state_value[state], 1)),
+                                        y_offset=y_offset,
                                         size_discount=0.7)
 
     def obtain_episode(self, policy, start_state, start_action, length):
@@ -154,30 +161,25 @@ class Solve:
                             "next_action": next_action})
         return episode
 
-    def mc_basic(self, length=5):
+    def mc_basic(self, length=30, epochs=10):
         """
 
         :param length: 每一个 state-action 对的长度
         :return:
         """
-        time_start = time.time()
-        policy = self.mean_policy.copy()
-        while np.linalg.norm(policy - self.policy, ord=1) > 0.001:
-            self.policy = policy.copy()
+        for epoch in range(epochs):
             for state in range(self.state_space_size):
                 for action in range(self.action_space_size):
-                    episode = self.obtain_episode(policy, state, action, length)
+                    episode = self.obtain_episode(self.policy, state, action, length)
                     g = 0
                     for step in range(len(episode) - 1, -1, -1):
                         g = episode[step]['reward'] + self.gama * g
                     self.qvalue[state][action] = g
                 qvalue_star = self.qvalue[state].max()
                 action_star = self.qvalue[state].tolist().index(qvalue_star)
-                policy[state] = np.zeros(shape=self.action_space_size)
-                policy[state, action_star] = 1
-            print(np.linalg.norm(policy - self.policy, ord=1))
-        time_end = time.time()
-        print("mc_basic cost time:" + str(time_end - time_start))
+                self.policy[state] = np.zeros(shape=self.action_space_size)
+                self.policy[state, action_star] = 1
+            print(epoch)
 
     def mc_exploring_starts(self, length=10):
         time_start = time.time()
@@ -211,7 +213,7 @@ class Solve:
         time_end = time.time()
         print("mc_exploring_starts cost time:" + str(time_end - time_start))
 
-    def mc_epsilon_greedy(self, length=100, epsilon=1, tolerance=1):
+    def mc_epsilon_greedy(self, length=1000, epsilon=1, tolerance=1):
         norm_list = []
 
         time_start = time.time()
@@ -262,7 +264,7 @@ class Solve:
         print(len(norm_list))
         print("mc_exploring_starts cost time:" + str(time_end - time_start))
 
-    def sarsa(self, alpha=0.1, epsilon=0.1, num_episodes=500):
+    def sarsa(self, alpha=0.1, epsilon=0.1, num_episodes=80):
         qvalue_list = [self.qvalue, self.qvalue + 1]
         while num_episodes > 0:
             done = False
@@ -295,13 +297,15 @@ class Solve:
                         self.policy[state, a] = 1 / self.action_space_size * epsilon
             # qvalue_list.append(self.qvalue.copy())
 
-    def expected_sarsa(self, alpha=0.1, epsilon=0.1, num_episodes=1000):
+    def expected_sarsa(self, alpha=0.1, epsilon=1, num_episodes=1000):
         init_num = num_episodes
         qvalue_list = [self.qvalue, self.qvalue + 1]
         episode_index_list = []
         reward_list = []
         length_list = []
         while num_episodes > 0:
+            if epsilon>0.1:
+                epsilon-=0.01
             episode_index_list.append(init_num - num_episodes)
             done = False
             self.env.reset()
@@ -343,7 +347,7 @@ class Solve:
                                             xlabel='episode_index', ylabel='total_length')
         fig.show()
 
-    def q_learning_on_policy(self, alpha=0.1, epsilon=0.7, num_episodes=1000):
+    def q_learning_on_policy(self, alpha=0.001, epsilon=0.4, num_episodes=1000):
         init_num = num_episodes
         qvalue_list = [self.qvalue, self.qvalue + 1]
         episode_index_list = []
@@ -388,7 +392,7 @@ class Solve:
                                             xlabel='episode_index', ylabel='total_length')
         fig.show()
 
-    def q_learning_off_policy(self, alpha=0.01, epsilon=0.1, num_episodes=2000, episode_length=5000):
+    def q_learning_off_policy(self, alpha=0.01, epsilon=0.1, num_episodes=2000, episode_length=2000):
         start_state = self.env.pos2state(self.env.agent_location)
         start_action = np.random.choice(np.arange(self.action_space_size),
                                         p=self.mean_policy[start_state])
@@ -407,18 +411,565 @@ class Solve:
             self.policy[state] = np.zeros(self.action_space_size)
             self.policy[state][action_star] = 1
 
+    def gfv(self, fourier: bool, state: int, ord: int) -> np.ndarray:
+        """
+        get_feature_vector
+        :param fourier: 是否使用傅里叶特征函数
+        :param state: 状态
+        :param ord: 特征函数最高阶次数/傅里叶q(对应书)
+        :return: 代入state后的计算结果
+        """
+
+        if state < 0 or state >= self.state_space_size:
+            raise ValueError("Invalid state value")
+        y, x = self.env.state2pos(state) + (1, 1)
+        feature_vector = []
+        if fourier:
+            # 归一化到 -1 到 1
+            x_normalized = x / self.env.size
+            y_normalized = y / self.env.size
+            for i in range(ord + 1):
+                for j in range(ord + 1):
+                    feature_vector.append(np.cos(np.pi * (i * x_normalized + j * y_normalized)))
+
+        else:
+            # 归一化到 0 到 1
+            x_normalized = (x - (self.env.size - 1) * 0.5) / (self.env.size - 1)
+            y_normalized = (y - (self.env.size - 1) * 0.5) / (self.env.size - 1)
+            for i in range(ord + 1):
+                for j in range(i + 1):
+                    feature_vector.append(y_normalized ** (ord - i) * x_normalized ** j)
+
+        return np.array(feature_vector)
+
+    def gfv_a(self, fourier: bool, state: int, action: int, ord: int) -> np.ndarray:
+        """
+        get_feature_vector_with_action
+        :param fourier: 是否使用傅里叶特征函数
+        :param state: 状态
+        :param ord: 特征函数最高阶次数/傅里叶q(对应书)
+        :return: 代入state后的计算结果
+        """
+
+        if state < 0 or state >= self.state_space_size or action < 0 or action >= self.action_space_size:
+            raise ValueError("Invalid state/action value")
+        feature_vector = []
+        y, x = self.env.state2pos(state) + (1, 1)
+
+        if fourier:
+            # 归一化到 -1 到 1
+            x_normalized = x / self.env.size
+            y_normalized = y / self.env.size
+            action_normalized = action / self.action_space_size
+            for i in range(ord + 1):
+                for j in range(ord + 1):
+                    for k in range(ord + 1):
+                        feature_vector.append(
+                            np.cos(np.pi * (i * x_normalized + j * action_normalized + k * y_normalized)))
+
+        else:
+            # 归一化到 0 到 1
+            state_normalized = (state - (self.state_space_size - 1) * 0.5) / (self.state_space_size - 1)
+            action_normalized = (action - (self.action_space_size - 1) * 0.5) / (self.action_space_size - 1)
+            for i in range(ord + 1):
+                for j in range(i + 1):
+                    feature_vector.append(state_normalized ** (ord - i) * action_normalized ** j)
+        return np.array(feature_vector)
+
+    def td_value_approximation(self, learning_rate=0.0005, epochs=100000, fourier=True, ord=5):
+        self.state_value=self.policy_evaluation(self.policy)
+        if not isinstance(learning_rate, float) or not isinstance(epochs, int) or not isinstance(
+                fourier, bool) or not isinstance(ord, int):
+            raise TypeError("Invalid input type")
+        if learning_rate <= 0 or epochs <= 0 or ord <= 0:
+            raise ValueError("Invalid input value")
+        episode_length = epochs
+        start_state = np.random.randint(self.state_space_size)
+        start_action = np.random.choice(np.arange(self.action_space_size),
+                                        p=self.mean_policy[start_state])
+        episode = self.obtain_episode(self.mean_policy, start_state, start_action, length=episode_length)
+        dim = (ord + 1) ** 2 if fourier else np.arange(ord + 2).sum()
+        w = np.random.default_rng().normal(size=dim)
+        rmse = []
+        value_approximation = np.zeros(self.state_space_size)
+        for epoch in range(epochs):
+            reward = episode[epoch]['reward']
+            state = episode[epoch]['state']
+            next_state = episode[epoch]['next_state']
+            target = reward + self.gama * np.dot(self.gfv(fourier, next_state, ord), w)
+            error = target - np.dot(self.gfv(fourier, state, ord), w)
+            gradient = self.gfv(fourier, state, ord)
+            w = w + learning_rate * error * gradient
+            for state in range(self.state_space_size):
+                value_approximation[state] = np.dot(self.gfv(fourier, state, ord), w)
+            rmse.append(np.sqrt(np.mean((value_approximation - self.state_value) ** 2)))
+            print(epoch)
+        X, Y = np.meshgrid(np.arange(1, 6), np.arange(1, 6))
+        Z = self.state_value.reshape(5, 5)
+        Z1 = value_approximation.reshape(5, 5)
+        # 绘制 3D 曲面图
+        fig = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax = fig.add_subplot(121, projection='3d')
+        ax.plot_surface(X, Y, Z)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('State Value')
+        z_min = -5
+        z_max = -2
+        ax.set_zlim(z_min, z_max)
+        ax1 = fig.add_subplot(122, projection='3d')
+        ax1.plot_surface(X, Y, Z1)
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_zlabel('Value Approximation')
+        ax1.set_zlim(z_min, z_max)
+        fig_rmse = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax_rmse = fig_rmse.add_subplot(111)
+
+        # 绘制 rmse 图像
+        ax_rmse.plot(rmse)
+        ax_rmse.set_title('RMSE')
+        ax_rmse.set_xlabel('Epoch')
+        ax_rmse.set_ylabel('RMSE')
+        plt.show()
+        return value_approximation
+
+    def sarsa_function_approximation(self, learning_rate=0.0005, epsilon=0.1, num_episodes=100000, fourier=True, ord=5):
+        dim = (ord + 1) ** 2 if fourier else np.arange(ord + 2).sum()
+        w = np.random.default_rng().normal(size=dim)
+
+        qvalue_approximation = np.zeros((self.state_space_size, self.action_space_size))
+        reward_list = []
+        length_list = []
+        rmse = []
+        policy_rmse = []
+        policy = self.mean_policy.copy()
+        next_state = 0
+        episode = self.obtain_episode(self.mean_policy, 0, 0, length=num_episodes)
+
+        for episode in range(num_episodes):
+            # epsilon = (epsilon - 1 / num_episodes) if epsilon > 0 else 0
+            done = False
+            self.env.reset()
+            total_rewards = 0
+            episode_length = 0
+            while not done:
+                state = next_state
+                action = np.random.choice(np.arange(self.action_space_size),
+                                          p=policy[state])
+                _, reward, done, _, _ = self.env.step(action)
+                episode_length += 1
+                total_rewards += reward
+                next_state = self.env.pos2state(self.env.agent_location)
+                next_action = np.random.choice(np.arange(self.action_space_size),
+                                               p=policy[next_state])
+                target = reward + self.gama * np.dot(self.gfv_a(fourier, next_state, next_action, ord), w)
+                error = target - np.dot(self.gfv_a(fourier, state, action, ord), w)
+                gradient = self.gfv_a(fourier, state, action, ord)
+                w = w + learning_rate * error * gradient
+                # for state in range(self.state_space_size):
+                #     for action in range(self.action_space_size):
+                qvalue_approximation[state, action] = np.dot(self.gfv_a(fourier, state, action, ord), w)
+
+                qvalue_star = qvalue_approximation[state].max()
+                action_star = qvalue_approximation[state].tolist().index(qvalue_star)
+                for a in range(self.action_space_size):
+                    if a == action_star:
+                        policy[state, a] = 1 - (
+                                self.action_space_size - 1) / self.action_space_size * epsilon
+                    else:
+                        policy[state, a] = 1 / self.action_space_size * epsilon
+            rmse.append(np.sqrt(np.mean((qvalue_approximation - self.qvalue) ** 2)))
+            # policy_rmse.append(np.sqrt(np.mean((policy - self.policy) ** 2)))
+            reward_list.append(total_rewards)
+            length_list.append(episode_length)
+            print("episode={},length={},reward={}".format(episode, episode_length, total_rewards))
+
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(211)
+        ax.plot(reward_list)
+        ax.set_ylabel('total_reward')
+        ax1 = fig.add_subplot(212)
+        ax1.plot(length_list)
+        ax1.set_xlabel('episode index')
+        ax1.set_ylabel('episode length')
+        fig_rmse = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax_rmse = fig_rmse.add_subplot(111)
+        ax_rmse.plot(rmse, label='qvalue')
+        # ax_rmse.plot(policy_rmse,label='policy')
+
+        ax_rmse.set_title('RMSE')
+        ax_rmse.set_xlabel('Epoch')
+        ax_rmse.set_ylabel('RMSE')
+        X, Y = np.meshgrid(np.arange(0, self.action_space_size), np.arange(0, self.state_space_size))
+        Z = self.qvalue
+        Z1 = qvalue_approximation
+        print(Z.shape, Z1.shape, X.shape)
+
+        # 绘制 3D 曲面图
+        fig = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax = fig.add_subplot(121, projection='3d')
+        ax.plot_surface(X, Y, Z)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('q Value')
+        # z_min = -5
+        # z_max = -2
+        # ax.set_zlim(z_min, z_max)
+        ax1 = fig.add_subplot(122, projection='3d')
+        ax1.plot_surface(X, Y, Z1)
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_zlabel('qValue Approximation')
+        fig_rmse = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax_rmse = fig_rmse.add_subplot(111)
+
+        plt.show()
+        return qvalue_approximation
+
+    def qlearning_function_approximation(self, learning_rate=0.0005, epsilon=0.1, num_episodes=100000, fourier=True,
+                                         ord=15):
+        dim = (ord + 1) ** 2 if fourier else np.arange(ord + 2).sum()
+        w = np.random.default_rng().normal(size=dim)
+
+        qvalue_approximation = np.zeros((self.state_space_size, self.action_space_size))
+        reward_list = []
+        length_list = []
+        rmse = []
+        policy = self.mean_policy.copy()
+        next_state = 0
+        episode = self.obtain_episode(self.mean_policy, 0, 0, length=num_episodes)
+
+        for episode in range(num_episodes):
+            # epsilon = (epsilon - 1 / num_episodes) if epsilon > 0 else 0
+            done = False
+            self.env.reset()
+            total_rewards = 0
+            episode_length = 0
+            while not done:
+                state = next_state
+                action = np.random.choice(np.arange(self.action_space_size),
+                                          p=policy[state])
+                _, reward, done, _, _ = self.env.step(action)
+                episode_length += 1
+                total_rewards += reward
+                next_state = self.env.pos2state(self.env.agent_location)
+                q_list = []
+                for a in range(self.action_space_size):
+                    q_list.append(np.dot(self.gfv_a(fourier, next_state, a, ord), w))
+
+                target = reward + self.gama * np.array(q_list).max()
+                error = target - np.dot(self.gfv_a(fourier, state, action, ord), w)
+                gradient = self.gfv_a(fourier, state, action, ord)
+                w = w + learning_rate * error * gradient
+                for s in range(self.state_space_size):
+                    for a in range(self.action_space_size):
+                        qvalue_approximation[s, a] = np.dot(self.gfv_a(fourier, s, a, ord), w)
+                qvalue_star = qvalue_approximation[state].max()
+                action_star = qvalue_approximation[state].tolist().index(qvalue_star)
+                for a in range(self.action_space_size):
+                    if a == action_star:
+                        policy[state, a] = 1 - (
+                                self.action_space_size - 1) / self.action_space_size * epsilon
+                    else:
+                        policy[state, a] = 1 / self.action_space_size * epsilon
+            self.writer.add_scalar('rmse', np.sqrt(np.mean((qvalue_approximation - self.qvalue) ** 2)), episode)
+            self.writer.add_scalar('episode_length', episode_length, episode)
+            self.writer.add_scalar('total_reward', total_rewards, episode)
+
+            # policy_rmse.append(np.sqrt(np.mean((policy - self.policy) ** 2)))
+            # reward_list.append(total_rewards)
+            # length_list.append(episode_length)
+            print("episode={},length={},reward={}".format(episode, episode_length, total_rewards))
+
+        # fig = plt.figure(figsize=(10, 10))
+        # ax = fig.add_subplot(211)
+        # ax.plot(reward_list)
+        # ax.set_ylabel('total_reward')
+        # ax1 = fig.add_subplot(212)
+        # ax1.plot(length_list)
+        # ax1.set_xlabel('episode index')
+        # ax1.set_ylabel('episode length')
+        # fig_rmse = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        # ax_rmse = fig_rmse.add_subplot(111)
+        # ax_rmse.plot(rmse, label='qvalue')
+        # # ax_rmse.plot(policy_rmse,label='policy')
+        #
+        # ax_rmse.set_title('RMSE')
+        # ax_rmse.set_xlabel('Epoch')
+        # ax_rmse.set_ylabel('RMSE')
+        X, Y = np.meshgrid(np.arange(0, self.action_space_size), np.arange(0, self.state_space_size))
+        Z = self.qvalue
+        Z1 = qvalue_approximation
+        print(Z.shape, Z1.shape, X.shape)
+
+        # 绘制 3D 曲面图
+        fig = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax = fig.add_subplot(121, projection='3d')
+        ax.plot_surface(X, Y, Z)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('q Value')
+        z_min = -6
+        z_max = 0
+        ax.set_zlim(z_min, z_max)
+        ax1 = fig.add_subplot(122, projection='3d')
+        ax1.plot_surface(X, Y, Z1)
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_zlabel('qValue Approximation')
+        ax1.set_zlim(z_min, z_max)
+
+        # fig_rmse = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        # ax_rmse = fig_rmse.add_subplot(111)
+        self.writer.close()
+        plt.show()
+        return qvalue_approximation
+
+    def qvalue_function_approximation(self, learning_rate=0.00008, epsilon=0.1, num_episodes=1000000,
+                                      fourier=True,
+                                      ord=5):
+        dim = (ord + 1) ** 3 if fourier else np.arange(ord + 2).sum()
+        w = np.random.default_rng().normal(size=dim)
+        qvalue_approximation = np.zeros(shape=(self.state_space_size, self.action_space_size))
+        episode = self.obtain_episode(self.mean_policy, 0, 0, length=100000)
+
+        for epoch in range(num_episodes):
+            # epsilon = (epsilon - 1 / num_episodes) if epsilon > 0 else 0
+            step = int(np.random.randint(low=0, high=99999, size=1))
+            reward = episode[step]['reward']
+            state = episode[step]['state']
+            action = episode[step]['action']
+            next_action = episode[step]['next_action']
+            next_state = episode[step]['next_state']
+            target = reward + self.gama * np.dot(self.gfv_a(fourier, next_state, next_action, ord), w)
+            error = target - np.dot(self.gfv_a(fourier, state, action, ord), w)
+            gradient = self.gfv_a(fourier, state, action, ord)
+            w = w + learning_rate * error * gradient
+            for a in range(self.action_space_size):
+                qvalue_approximation[state, a] = np.dot(self.gfv_a(fourier, state, a, ord), w)
+            self.writer.add_scalar('rmse', np.sqrt(np.mean((qvalue_approximation - self.qvalue) ** 2)), epoch)
+            if epoch % 1000 == 0:
+                print(epoch, np.sqrt(np.mean((qvalue_approximation - self.qvalue) ** 2)))
+        X, Y = np.meshgrid(np.arange(0, self.action_space_size), np.arange(0, self.state_space_size))
+        Z = self.qvalue
+        Z1 = qvalue_approximation
+        print(Z.shape, Z1.shape, X.shape)
+
+        # 绘制 3D 曲面图
+        fig = plt.figure(figsize=(8, 6))  # 设置图形的尺寸，宽度为8，高度为6
+        ax = fig.add_subplot(121, projection='3d')
+        ax.plot_surface(X, Y, Z)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('q Value')
+        z_min = -6
+        z_max = 0
+        ax.set_zlim(z_min, z_max)
+        ax1 = fig.add_subplot(122, projection='3d')
+        ax1.plot_surface(X, Y, Z1)
+        ax1.set_xlabel('X')
+        ax1.set_ylabel('Y')
+        ax1.set_zlabel('qValue Approximation')
+        ax1.set_zlim(z_min, z_max)
+        for i in range(self.state_space_size):
+            for j in range(self.action_space_size):
+                print("qvalue:{},approximation:{}".format(self.qvalue[i, j], qvalue_approximation[i, j]))
+
+        self.writer.close()
+        plt.show()
+        return qvalue_approximation
+
+    def get_data_iter(self, episode, batch_size=64, is_train=True):
+        """构造一个PyTorch数据迭代器"""
+        reward = []
+        state_action = []
+        next_state = []
+        for i in range(len(episode)):
+            reward.append(episode[i]['reward'])
+            action = episode[i]['action']
+            y, x = self.env.state2pos(episode[i]['state'])
+            state_action.append((y, x, action))
+            y, x = self.env.state2pos(episode[i]['next_state'])
+            next_state.append((y, x))
+        reward = torch.tensor(reward).reshape(-1, 1)
+        state_action = torch.tensor(state_action)
+        next_state = torch.tensor(next_state)
+        data_arrays = (state_action, reward, next_state)
+        dataset = data.TensorDataset(*data_arrays)
+        return data.DataLoader(dataset, batch_size, shuffle=is_train, drop_last=False)
+
+    def dqn(self, learning_rate=0.0015, episode_length=5000, epochs=600, batch_size=100, update_step=10):
+        q_net = QNET()
+        policy = self.policy.copy()
+        state_value = self.state_value.copy()
+        q_target_net = QNET()
+        q_target_net.load_state_dict(q_net.state_dict())
+        optimizer = torch.optim.SGD(q_net.parameters(),
+                                    lr=learning_rate)
+        episode = self.obtain_episode(self.mean_policy, 0, 0, length=episode_length)
+        date_iter = self.get_data_iter(episode, batch_size)
+        loss = torch.nn.MSELoss()
+        approximation_q_value = np.zeros(shape=(self.state_space_size, self.action_space_size))
+        i = 0
+        rmse_list=[]
+        loss_list=[]
+        for epoch in range(epochs):
+            for state_action, reward, next_state in date_iter:
+                i += 1
+                q_value = q_net(state_action)
+                q_value_target = torch.empty((batch_size, 0))  # 定义空的张量
+                for action in range(self.action_space_size):
+                    s_a = torch.cat((next_state, torch.full((batch_size, 1), action)), dim=1)
+                    q_value_target = torch.cat((q_value_target, q_target_net(s_a)), dim=1)
+                q_star = torch.max(q_value_target, dim=1, keepdim=True)[0]
+                y_target_value = reward + self.gama * q_star
+                l = loss(q_value, y_target_value)
+                optimizer.zero_grad()  # PyTorch中默认梯度会累积,这里需要显式将梯度置为0S
+                l.backward()  # 反向传播更新参数
+                optimizer.step()
+                if i % update_step == 0 and i != 0:
+                    q_target_net.load_state_dict(
+                        q_net.state_dict())  # 更新目标网络
+                    # policy = np.zeros(shape=(self.state_space_size, self.action_space_size))
+            loss_list.append(float(l))
+            print("loss:{},epoch:{}".format(l, epoch))
+            self.policy = np.zeros(shape=(self.state_space_size, self.action_space_size))
+            self.state_value = np.zeros(shape=self.state_space_size)
+
+            for s in range(self.state_space_size):
+                y, x = self.env.state2pos(s)
+                for a in range(self.action_space_size):
+                    approximation_q_value[s, a] = float(q_net(torch.tensor((y, x, a)).reshape(-1, 3)))
+                q_star_index = approximation_q_value[s].argmax()
+                self.policy[s, q_star_index] = 1
+                self.state_value[s] = approximation_q_value[s, q_star_index]
+            rmse_list.append(np.sqrt(np.mean((state_value - self.state_value) ** 2)))
+            # policy_rmse = np.sqrt(np.mean((policy - self.policy) ** 2))
+        fig_rmse = plt.figure(figsize=(8, 12))  # 设置图形的尺寸，宽度为8，高度为6
+        ax_rmse = fig_rmse.add_subplot(211)
+
+        # 绘制 rmse 图像
+        ax_rmse.plot(rmse_list)
+        ax_rmse.set_title('RMSE')
+        ax_rmse.set_xlabel('Epoch')
+        ax_rmse.set_ylabel('RMSE')
+        self.writer.close()
+        ax_loss = fig_rmse.add_subplot(212)
+
+        ax_loss.plot(loss_list)
+        ax_loss.set_title('loss')
+        ax_loss.set_xlabel('Epoch')
+        ax_loss.set_ylabel('Loss')
+        plt.show()
+
+    def obtain_episode_p(self, policy_net, start_state, start_action):
+        f"""
+
+        :param policy_net: 由指定策略产生episode
+        :param start_state: 起始state
+        :param start_action: 起始action
+        :return: 一个 state,action,reward,next_state,next_action 序列
+        """
+        self.env.agent_location = self.env.state2pos(start_state)
+        episode = []
+        next_action = start_action
+        next_state = start_state
+        done = False
+        while not done:
+            state = next_state
+            action = next_action
+            _, reward, done, _, _ = self.env.step(action)
+            next_state = self.env.pos2state(self.env.agent_location)
+            y, x = self.env.state2pos(next_state) / self.env.size
+            prb = policy_net(torch.tensor((y, x)).reshape(-1, 2))[0]
+
+            next_action = np.random.choice(np.arange(self.action_space_size),
+                                           p=prb.detach().numpy())
+            episode.append({"state": state, "action": action, "reward": reward, "next_state": next_state,
+                            "next_action": next_action})
+        return episode
+
+    def reinforce(self, learning_rate=0.001, epochs=20000, episode_length=100):
+        policy_net = PolicyNet()
+        optimizer = torch.optim.Adam(policy_net.parameters(),
+                                     lr=learning_rate)
+        for epoch in range(epochs):
+            # start_state =  0
+            # y, x = self.env.state2pos(start_state) / self.env.size
+            prb = policy_net(torch.tensor((0, 0)).reshape(-1, 2))[0]
+            start_action = np.random.choice(np.arange(self.action_space_size),
+                                            p=prb.detach().numpy())
+            episode = self.obtain_episode_p(policy_net, 0, start_action)
+            if (len(episode) < 10):
+                g = -100
+            else:
+                g = 0
+            optimizer.zero_grad()
+
+            for step in reversed(range(len(episode))):
+
+                reward = episode[step]['reward']
+                state = episode[step]['state']
+                action = episode[step]['action']
+                if len(episode) > 1000:
+                    print(g, reward)
+                g = self.gama * g + reward
+                self.qvalue[state, action] = g
+                y, x = self.env.state2pos(state) / self.env.size
+                prb = policy_net(torch.tensor((y, x)).reshape(-1, 2))[0]
+                log_prob = torch.log(prb[action])
+                loss = -log_prob * g
+                loss.backward()  # 反向传播计算梯度
+            self.writer.add_scalar('loss', float(loss.detach()), epoch)
+            self.writer.add_scalar('g', g, epoch)
+            self.writer.add_scalar('episode_length', len(episode), epoch)
+            print(epoch, len(episode), g)
+            optimizer.step()
+        for s in range(self.state_space_size):
+            y, x = self.env.state2pos(s) / self.env.size
+            prb = policy_net(torch.tensor((y, x)).reshape(-1, 2))[0].detach().numpy()
+            self.policy[s, :] = prb.copy()
+        self.writer.close()
+
 
 if __name__ == "__main__":
-    env = grid_env.GridEnv(size=5, target=[2, 3], forbidden=[[2, 2], [2, 1], [1, 1], [3, 3], [1, 3], [1, 4]],
+    # env = grid_env.GridEnv(size=2, target=[1, 1], forbidden=[[1, 0]],
+    #                        render_mode='')
+
+    env = grid_env.GridEnv(size=5, target=[2, 3],
+                           forbidden=[[2, 2], [2, 1], [1, 1], [3, 3], [1, 3], [1, 4]],
                            render_mode='')
+    # env = grid_env.GridEnv(size=3, target=[2, 1], forbidden=[[2, 0], [1, 0], [1, 1]],
+    #                        render_mode='')
     solver = Solve(env)
+    # solver.show_state_value(solver.state_value, y_offset=0.2)
     solver.q_learning_off_policy()
+    solver.state_value = solver.policy_evaluation(solver.policy, steps=100)
+
+    start_time = time.time()
+    solver.dqn()
+    # solver.q_learning_off_policy()
+
+    # solver.td_value_approximation()
+
+    # solver.show_state_value(state_value=solver.td_value_approximation(), y_offset=-0.25)
+    # solver.q_learning_on_policy()
+    # solver.qvalue_function_approximation()
+    # solver.qlearning_function_approximation()
+    # solver.dqn()
+    # solver.reinforce()
+    end_time = time.time()
+
+    cost_time = end_time - start_time
+    print("cost_time:{}".format(round(cost_time, 2)))
+    print(len(env.render_.trajectory))
     # solver.mc_epsilon_greedy()
     # solver.mc_exploring_starts(length=20)
     # solver.mc_basic(length=15)
-    solver.state_value = solver.policy_evaluation(solver.policy, steps=100)
-    solver.show_policy()
-    solver.show_state_value()
-    solver.env.render()
-    solver.env.render_.draw_episode()
+    solver.show_policy()  # solver.env.render()
+    solver.show_state_value(solver.state_value, y_offset=0.25)
+
+    # solver.env.render()
+    # solver.env.render_.draw_episode()
     solver.env.render()

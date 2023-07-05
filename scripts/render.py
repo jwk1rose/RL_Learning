@@ -5,7 +5,7 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 
-
+np.random.seed(1)
 class Render:
     def __init__(self, target: Union[list, tuple, np.ndarray], forbidden: Union[list, tuple, np.ndarray],
                  size=5):
@@ -129,7 +129,7 @@ class Render:
         :param size_discount: 字体大小 (0-1)
         :return: None
         """
-        plt.text(pos[0] + 0.5, pos[1] + 0.5 + y_offset, word, size=size_discount * (30 - 2 * self.size), ha='center',
+        self.ax.text(pos[0] + 0.5, pos[1] + 0.5 + y_offset, word, size=size_discount * (30 - 2 * self.size), ha='center',
                  va='center', color=color)
 
     def upgrade_agent(self, pos: Union[list, np.ndarray, tuple], action,
@@ -167,7 +167,7 @@ class Render:
         :return:None
         """
         anim = animation.FuncAnimation(self.fig, self.animate, init_func=self.init(), frames=len(self.trajectory),
-                                       interval=200, repeat=False)
+                                       interval=25, repeat=False)
         anim.save(name + '.mp4')
 
     # init 和 animate 都是服务于animation.FuncAnimation
@@ -176,6 +176,7 @@ class Render:
         pass
 
     def animate(self, i):
+        print(i,len(self.trajectory))
         location = self.trajectory[i][0]
         action = self.trajectory[i][1]
         next_location = self.trajectory[i][2]
