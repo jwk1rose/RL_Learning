@@ -18,4 +18,4 @@
 
 项目持续更新中 🚶
 
-[赵世裕老师课程地址](https://www.bilibili.com/video/BV1sd4y167NS) 💌
+[赵世老师课程地址](https://www.bilibili.com/video/BV1sd4y167NS) 💌
